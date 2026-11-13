@@ -22,20 +22,29 @@ echo "[setup] Creating Python 3.11 venv at $VENV_DIR using $UV_BIN..."
 "$UV_BIN" venv "$VENV_DIR" --python 3.11 --seed --clear
 VENV_PY="$VENV_DIR/bin/python"
 
-echo "[setup] Installing PyTorch 2.1.2 + cu121 + NumPy < 2.0..."
+cat > /tmp/mm_constraints.txt << 'EOF'
+numpy<2.0
+setuptools<70
+torch==2.1.2
+torchvision==0.16.2
+EOF
+
+echo "[setup] Installing PyTorch 2.1.2 + cu121..."
 "$UV_BIN" pip install --python "$VENV_PY" -q \
-  "numpy<2.0" \
-  "setuptools<70" \
   torch==2.1.2 torchvision==0.16.2 \
   --index-url https://download.pytorch.org/whl/cu121
 
-echo "[setup] Installing OpenMMLab 2.x prebuilt wheels..."
-"$UV_BIN" pip install --python "$VENV_PY" -q \
+echo "[setup] Installing NumPy < 2.0, OpenMMLab 2.x, and helper dependencies..."
+"$UV_BIN" pip install --python "$VENV_PY" -q -c /tmp/mm_constraints.txt \
+  "numpy<2.0" "setuptools<70" \
   "mmengine>=0.8.0,<0.11.0" \
   "gdown>=5.2.0" "kaggle" "shapely" "terminaltables" "einops" "pillow" "tqdm" "requests"
-"$UV_BIN" pip install --python "$VENV_PY" -q \
+
+"$UV_BIN" pip install --python "$VENV_PY" -q -c /tmp/mm_constraints.txt \
   "mmcv==2.1.0" -f https://download.openmmlab.com/mmcv/dist/cu121/torch2.1/index.html
-"$UV_BIN" pip install --python "$VENV_PY" -q "mmdet>=3.2.0,<3.4.0"
+
+"$UV_BIN" pip install --python "$VENV_PY" -q -c /tmp/mm_constraints.txt \
+  "mmdet>=3.2.0,<3.4.0"
 
 if [ ! -d "$REPO_DIR/mmrotate" ]; then
   echo "[setup] Cloning mmrotate (dev-1.x)..."
@@ -43,7 +52,8 @@ if [ ! -d "$REPO_DIR/mmrotate" ]; then
 fi
 
 echo "[setup] Installing mmrotate (editable, no build isolation)..."
-"$UV_BIN" pip install --python "$VENV_PY" -q --no-build-isolation -e "$REPO_DIR/mmrotate"
+"$UV_BIN" pip install --python "$VENV_PY" -q -c /tmp/mm_constraints.txt \
+  --no-build-isolation -e "$REPO_DIR/mmrotate"
 
 echo "[setup] Done. Running environment verification..."
 "$VENV_PY" "$REPO_DIR/scripts/verify_env.py" --project-root "$REPO_DIR" --json-out "$REPO_DIR/colab_env_summary.json"
