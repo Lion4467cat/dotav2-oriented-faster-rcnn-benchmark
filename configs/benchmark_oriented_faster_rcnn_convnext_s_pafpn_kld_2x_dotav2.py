@@ -189,11 +189,11 @@ test_dataloader = val_dataloader
 val_evaluator = dict(type="DOTAMetric", metric="mAP")
 test_evaluator = val_evaluator
 
-# AdamW + layerwise decay style LR for ConvNeXt + AMP for Colab Pro A100/L4.
+# OptimWrapper: on A100-80GB, full fp32 precision is used to ensure GaussianDistLoss
+# (KLD matrix inversion/determinant) operates without float16 half precision lu_factor errors.
 optim_wrapper = dict(
     _delete_=True,
-    type="AmpOptimWrapper",
-    dtype="float16",
+    type="OptimWrapper",
     optimizer=dict(
         type="AdamW",
         lr=1e-4,
@@ -201,7 +201,7 @@ optim_wrapper = dict(
         weight_decay=0.05,
     ),
     clip_grad=dict(max_norm=35, norm_type=2),
-    accumulative_counts=2,  # Effective batch size = 4 * 2 = 8
+    accumulative_counts=1,  # Full batch_size=8 on A100
 )
 
 max_epochs = 24
