@@ -4,13 +4,24 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 from pathlib import Path
 
 import nbformat
+import numpy as np
 
 from configs.dota_v2_classes import DOTA_V2_CLASSES, DOTA_V2_PALETTE
+from scripts.compute_extended_metrics import (
+    compute_rotated_iou_matrix,
+    evaluate_predictions,
+    long_edge_angle_deg,
+)
 from scripts.download_dotav2 import normalize_and_validate_labels
-from scripts.evaluate_benchmark import extract_best_metrics, render_markdown_report
+from scripts.evaluate_benchmark import (
+    extract_best_metrics,
+    load_extended_metrics,
+    render_markdown_report,
+)
 from scripts.verify_env import recommend_batch_profile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -123,3 +134,84 @@ def test_colab_notebook_valid() -> None:
     assert nb_path.is_file()
     nb = nbformat.read(str(nb_path), as_version=4)
     assert len(nb.cells) >= 10
+
+
+def test_rotated_iou_and_long_edge_invariance() -> None:
+    b1 = np.array([[100.0, 100.0, 80.0, 20.0, 0.3]], dtype=np.float32)
+    b1_swapped = np.array([[100.0, 100.0, 20.0, 80.0, 0.3 + math.pi / 2.0]], dtype=np.float32)
+    b_far = np.array([[500.0, 500.0, 40.0, 10.0, 0.0]], dtype=np.float32)
+
+    iou = compute_rotated_iou_matrix(b1, np.vstack([b1_swapped, b_far]))
+    assert math.isclose(float(iou[0, 0]), 1.0, abs_tol=1e-4)
+    assert float(iou[0, 1]) == 0.0
+    ang1 = float(long_edge_angle_deg(b1)[0])
+    ang2 = float(long_edge_angle_deg(b1_swapped)[0])
+    assert math.isclose(ang1, ang2, abs_tol=1e-3)
+
+
+def test_extended_metrics_suite_and_report_integration(tmp_path: Path) -> None:
+    ann_dir = tmp_path / "annfiles"
+    ann_dir.mkdir()
+    # One small-vehicle (easy), one large ship (easy), one difficult harbor
+    (ann_dir / "P0001.txt").write_text(
+        "90 90 110 90 110 110 90 110 small-vehicle 0\n"
+        "200 260 400 260 400 340 200 340 ship 0\n"
+        "500 500 600 500 600 550 500 550 harbor 1\n",
+        encoding="utf-8",
+    )
+
+    samples = [
+        {
+            "img_path": str(tmp_path / "images" / "P0001.png"),
+            "pred_instances": {
+                "bboxes": np.array(
+                    [
+                        [100.0, 100.0, 20.0, 20.0, 0.0],  # exact TP on small-vehicle
+                        [300.0, 300.0, 200.0, 80.0, 0.05],  # TP on ship (~2.86 deg error)
+                        [550.0, 525.0, 100.0, 50.0, 0.0],  # hits difficult=1 harbor (ignored for mAP)
+                        [700.0, 700.0, 40.0, 40.0, 0.0],  # low-conf FP
+                    ],
+                    dtype=np.float32,
+                ),
+                "scores": np.array([0.95, 0.90, 0.92, 0.20], dtype=np.float32),
+                "labels": np.array(
+                    [
+                        DOTA_V2_CLASSES.index("small-vehicle"),
+                        DOTA_V2_CLASSES.index("ship"),
+                        DOTA_V2_CLASSES.index("harbor"),
+                        DOTA_V2_CLASSES.index("plane"),
+                    ],
+                    dtype=np.int64,
+                ),
+            },
+        }
+    ]
+
+    ext = evaluate_predictions(samples, ann_dir=ann_dir)
+    assert ext["num_gt_non_difficult"] == 2
+    assert ext["map50"] == 1.0
+    assert ext["map50_95"] >= 0.8
+    assert ext["micro_prf"]["f1_optimal"]["precision"] == 1.0
+    assert ext["micro_prf"]["f1_optimal"]["recall"] == 1.0
+    assert ext["micro_prf"]["at_conf"]["0.25"]["precision"] == 1.0
+    assert ext["scale_ap50"]["small"]["ap50"] == 1.0
+    assert ext["scale_ap50"]["large"]["ap50"] == 1.0
+    assert ext["difficulty_recall"]["difficult_total"] == 1
+    assert ext["difficulty_recall"]["difficult_recall"] == 1.0
+    assert ext["orientation_error_deg"]["mean_elongated_tp"] is not None
+
+    work_dir = tmp_path / "work"
+    (work_dir / "eval_test").mkdir(parents=True)
+    (work_dir / "scalars.json").write_text(
+        json.dumps({"step": 12, "dota/mAP": 0.59}) + "\n", encoding="utf-8"
+    )
+    (work_dir / "eval_test" / "extended_metrics.json").write_text(
+        json.dumps(ext), encoding="utf-8"
+    )
+    loaded_ext = load_extended_metrics(work_dir)
+    assert loaded_ext is not None
+    md = render_markdown_report(
+        extract_best_metrics(work_dir), None, baseline_ext=loaded_ext
+    )
+    assert "Reference Target (User Provided)" in md
+    assert "Mean Angle Error - Elongated" in md
