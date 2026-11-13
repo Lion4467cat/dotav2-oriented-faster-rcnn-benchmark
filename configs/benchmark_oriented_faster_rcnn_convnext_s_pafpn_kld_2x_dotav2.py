@@ -160,6 +160,7 @@ train_dataloader = dict(
     persistent_workers=True,
     sampler=dict(type="DefaultSampler", shuffle=True),
     dataset=dict(
+        _delete_=True,
         type="mmdet.ClassBalancedDataset",
         oversample_thr=1e-3,
         dataset=raw_train_dataset,
