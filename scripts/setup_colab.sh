@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Provisions an isolated Python 3.11 venv via `uv` on Google Colab (whose system
-# Python may be 3.12/3.13+), then installs PyTorch 2.1.2 (cu121) + prebuilt
-# MMCV 2.1.0 + MMDet 3.x + MMRotate (dev-1.x) without compiling CUDA ops.
+# Provisions an isolated Python 3.11 venv via `uv` on Google Colab, then installs
+# mutually compatible prebuilt wheels:
+#   torch==2.0.1+cu118 -> mmcv==2.0.1 (<2.1.0) -> mmdet==3.1.0 (<3.2.0) -> mmrotate (dev-1.x)
 REPO_DIR="${1:-$(pwd)}"
 VENV_DIR="${2:-/content/mmrotate_venv}"
 cd "$REPO_DIR"
@@ -25,26 +25,26 @@ VENV_PY="$VENV_DIR/bin/python"
 cat > /tmp/mm_constraints.txt << 'EOF'
 numpy<2.0
 setuptools<70
-torch==2.1.2
-torchvision==0.16.2
+torch==2.0.1
+torchvision==0.15.2
 EOF
 
-echo "[setup] Installing PyTorch 2.1.2 + cu121..."
+echo "[setup] Installing PyTorch 2.0.1 + cu118..."
 "$UV_BIN" pip install --python "$VENV_PY" -q \
-  torch==2.1.2 torchvision==0.16.2 \
-  --index-url https://download.pytorch.org/whl/cu121
+  torch==2.0.1 torchvision==0.15.2 \
+  --index-url https://download.pytorch.org/whl/cu118
 
 echo "[setup] Installing NumPy < 2.0, OpenMMLab 2.x, and helper dependencies..."
 "$UV_BIN" pip install --python "$VENV_PY" -q -c /tmp/mm_constraints.txt \
   "numpy<2.0" "setuptools<70" \
-  "mmengine>=0.8.0,<0.11.0" \
+  "mmengine>=0.8.0,<0.10.0" \
   "gdown>=5.2.0" "kaggle" "shapely" "terminaltables" "einops" "pillow" "tqdm" "requests"
 
 "$UV_BIN" pip install --python "$VENV_PY" -q -c /tmp/mm_constraints.txt \
-  "mmcv==2.1.0" -f https://download.openmmlab.com/mmcv/dist/cu121/torch2.1/index.html
+  "mmcv==2.0.1" -f https://download.openmmlab.com/mmcv/dist/cu118/torch2.0/index.html
 
 "$UV_BIN" pip install --python "$VENV_PY" -q -c /tmp/mm_constraints.txt \
-  "mmdet>=3.0.0rc6,<3.2.0"
+  "mmdet==3.1.0"
 
 if [ ! -d "$REPO_DIR/mmrotate" ]; then
   echo "[setup] Cloning mmrotate (dev-1.x)..."
