@@ -44,7 +44,7 @@ echo "[setup] Installing NumPy < 2.0, OpenMMLab 2.x, and helper dependencies..."
   "mmcv==2.1.0" -f https://download.openmmlab.com/mmcv/dist/cu121/torch2.1/index.html
 
 "$UV_BIN" pip install --python "$VENV_PY" -q -c /tmp/mm_constraints.txt \
-  "mmdet>=3.2.0,<3.4.0"
+  "mmdet>=3.0.0rc6,<3.2.0"
 
 if [ ! -d "$REPO_DIR/mmrotate" ]; then
   echo "[setup] Cloning mmrotate (dev-1.x)..."
