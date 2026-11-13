@@ -17,6 +17,7 @@ import argparse
 import shutil
 import subprocess
 import sys
+import tarfile
 import zipfile
 from collections import Counter
 from pathlib import Path
@@ -38,6 +39,13 @@ OFFICIAL_GDRIVE_FOLDERS = {
 ULTRALYTICS_DOTAV2_URL = (
     "https://github.com/ultralytics/yolov5/releases/download/v1.0/DOTAv2.zip"
 )
+
+HUGGINGFACE_DOTAV2_URLS = {
+    "train_images": "https://huggingface.co/datasets/isaaccorley/dota/resolve/main/dotav2.0_images_train.tar.gz",
+    "val_images": "https://huggingface.co/datasets/isaaccorley/dota/resolve/main/dotav2.0_images_val.tar.gz",
+    "train_ann": "https://huggingface.co/datasets/isaaccorley/dota/resolve/main/dotav2.0_annotations_train.tar.gz",
+    "val_ann": "https://huggingface.co/datasets/isaaccorley/dota/resolve/main/dotav2.0_annotations_val.tar.gz",
+}
 
 # Ultralytics dota.yaml class ID mapping (0..17 -> canonical hyphenated names).
 ULTRALYTICS_ID_TO_CLASS = {
@@ -118,16 +126,27 @@ def download_kaggle_dataset(dataset_slug: str, dest: Path) -> None:
 
 
 def extract_archives(src_dir: Path, target_dir: Path) -> None:
-    """Extract all .zip archives in src_dir into target_dir."""
+    """Extract all .zip and .tar.gz/.tgz/.tar archives in src_dir into target_dir."""
     target_dir.mkdir(parents=True, exist_ok=True)
-    zips = sorted(src_dir.rglob("*.zip"))
-    if not zips:
-        print(f"[extract] No .zip files found under {src_dir}")
+    archives = sorted(
+        [
+            *src_dir.rglob("*.zip"),
+            *src_dir.rglob("*.tar.gz"),
+            *src_dir.rglob("*.tgz"),
+            *src_dir.rglob("*.tar"),
+        ]
+    )
+    if not archives:
+        print(f"[extract] No archives found under {src_dir}")
         return
-    for zpath in zips:
-        print(f"[extract] {zpath.name} -> {target_dir}")
-        with zipfile.ZipFile(zpath, "r") as zf:
-            zf.extractall(target_dir)
+    for apath in archives:
+        print(f"[extract] {apath.name} -> {target_dir}")
+        if apath.suffix == ".zip":
+            with zipfile.ZipFile(apath, "r") as zf:
+                zf.extractall(target_dir)
+        else:
+            with tarfile.open(apath, "r:*") as tf:
+                tf.extractall(target_dir)
 
 
 def _locate_split_dirs(root: Path, split: str) -> tuple[Path, Path]:
@@ -162,6 +181,25 @@ def _locate_split_dirs(root: Path, split: str) -> tuple[Path, Path]:
         lbl_dirs = [
             p for p in split_root.rglob("*") if p.is_dir() and "label" in p.name.lower()
         ]
+        if not img_dirs and any(
+            p.suffix.lower() in {".png", ".jpg", ".jpeg"} for p in split_root.rglob("*")
+        ):
+            img_dirs = [
+                p
+                for p in [split_root, *split_root.rglob("*")]
+                if p.is_dir()
+                and any(
+                    f.suffix.lower() in {".png", ".jpg", ".jpeg"}
+                    for f in p.iterdir()
+                    if f.is_file()
+                )
+            ]
+        if not lbl_dirs and any(split_root.rglob("*.txt")):
+            lbl_dirs = [
+                p
+                for p in [split_root, *split_root.rglob("*")]
+                if p.is_dir() and any(f.suffix == ".txt" for f in p.iterdir() if f.is_file())
+            ]
         if img_dirs and lbl_dirs:
             return img_dirs[0], lbl_dirs[0]
 
@@ -346,8 +384,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download & stage DOTA v2.0 train/val.")
     parser.add_argument(
         "--source",
-        choices=["ultralytics", "local", "gdrive", "kaggle"],
-        default="ultralytics",
+        choices=["huggingface", "ultralytics", "local", "gdrive", "kaggle"],
+        default="huggingface",
         help="Where to fetch raw archives if not already cached.",
     )
     parser.add_argument(
@@ -375,7 +413,24 @@ def main() -> None:
     cache_dir: Path = args.cache_dir
     out_dir: Path = args.out_dir
 
-    if args.source == "ultralytics":
+    if args.source == "huggingface":
+        download_url(
+            HUGGINGFACE_DOTAV2_URLS["train_images"],
+            cache_dir / "train" / "dotav2.0_images_train.tar.gz",
+        )
+        download_url(
+            HUGGINGFACE_DOTAV2_URLS["train_ann"],
+            cache_dir / "train" / "dotav2.0_annotations_train.tar.gz",
+        )
+        download_url(
+            HUGGINGFACE_DOTAV2_URLS["val_images"],
+            cache_dir / "val" / "dotav2.0_images_val.tar.gz",
+        )
+        download_url(
+            HUGGINGFACE_DOTAV2_URLS["val_ann"],
+            cache_dir / "val" / "dotav2.0_annotations_val.tar.gz",
+        )
+    elif args.source == "ultralytics":
         download_url(ULTRALYTICS_DOTAV2_URL, cache_dir / "DOTAv2.zip")
     elif args.source == "gdrive":
         download_gdrive_folder(OFFICIAL_GDRIVE_FOLDERS["train_images"], cache_dir / "train")
