@@ -15,6 +15,8 @@ _base_ = [
     "../mmrotate/configs/oriented_rcnn/oriented-rcnn-le90_r50_fpn_1x_dota.py"
 ]
 
+custom_imports = dict(imports=["mmpretrain.models"], allow_failed_imports=False)
+
 angle_version = "le90"
 
 DOTA_V2_CLASSES = (
@@ -70,7 +72,7 @@ convnext_s_ckpt = (
 model = dict(
     backbone=dict(
         _delete_=True,
-        type="mmdet.ConvNeXt",
+        type="mmpretrain.ConvNeXt",
         arch="small",
         out_indices=(0, 1, 2, 3),
         drop_path_rate=0.4,
