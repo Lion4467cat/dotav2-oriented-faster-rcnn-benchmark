@@ -63,7 +63,7 @@ def test_convert_yolo_obb_to_dota_labeltxt(tmp_path: Path) -> None:
     Image.new("RGB", (1000, 500)).save(img_dir / "P0002.png")
     (lbl_dir / "P0002.txt").write_text(
         "10 0.1 0.2 0.2 0.2 0.2 0.4 0.1 0.4\n"
-        "17 0.5 0.5 0.6 0.5 0.6 0.6 0.5 0.6\n",
+        "17 2.2 0.5 2.3 0.5 2.3 0.6 2.2 0.6\n",
         encoding="utf-8",
     )
     counts = normalize_and_validate_labels(lbl_dir, img_dir=img_dir)
@@ -71,6 +71,7 @@ def test_convert_yolo_obb_to_dota_labeltxt(tmp_path: Path) -> None:
     assert counts["helipad"] == 1
     text = (lbl_dir / "P0002.txt").read_text(encoding="utf-8")
     assert "100.0 100.0 200.0 100.0 200.0 200.0 100.0 200.0 small-vehicle 0" in text
+    assert "2200.0 250.0 2300.0 250.0 2300.0 300.0 2200.0 300.0 helipad 0" in text
 
 
 def test_gpu_batch_profiles() -> None:

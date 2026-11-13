@@ -182,10 +182,39 @@ def _is_yolo_obb_line(parts: list[str]) -> bool:
     if len(parts) != 9 or not parts[0].isdigit():
         return False
     try:
-        vals = [float(x) for x in parts[1:]]
+        [float(x) for x in parts[1:]]
     except ValueError:
         return False
-    return all(-0.1 <= v <= 1.1 for v in vals)
+    return True
+
+
+def _sanitize_polygon_coords(coords: list[float]) -> list[float] | None:
+    """Repair self-intersecting polygons or drop zero-area degenerate boxes."""
+    try:
+        from shapely.geometry import Polygon
+    except ImportError:
+        return coords
+
+    pts = [(coords[i], coords[i + 1]) for i in range(0, 8, 2)]
+    poly = Polygon(pts)
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    if poly.is_empty or poly.area < 1.0:
+        return None
+    if poly.geom_type == "MultiPolygon":
+        poly = max(poly.geoms, key=lambda g: g.area)
+    if len(poly.exterior.coords) == 5:
+        flat: list[float] = []
+        for x, y in list(poly.exterior.coords)[:4]:
+            flat.extend([float(x), float(y)])
+        return flat
+    rect = poly.minimum_rotated_rectangle
+    if rect.is_empty or rect.area < 1.0 or len(rect.exterior.coords) < 5:
+        return None
+    flat = []
+    for x, y in list(rect.exterior.coords)[:4]:
+        flat.extend([float(x), float(y)])
+    return flat
 
 
 def normalize_and_validate_labels(
@@ -223,10 +252,14 @@ def normalize_and_validate_labels(
                         size_cache[txt_path.stem] = im.size
                 w, h = size_cache[txt_path.stem]
                 norm_coords = [float(x) for x in parts[1:]]
-                px_coords = []
-                for idx, val in enumerate(norm_coords):
-                    px_coords.append(f"{val * (w if idx % 2 == 0 else h):.1f}")
+                raw_px = [
+                    val * (w if idx % 2 == 0 else h) for idx, val in enumerate(norm_coords)
+                ]
+                sanitized = _sanitize_polygon_coords(raw_px)
                 changed = True
+                if sanitized is None:
+                    continue
+                px_coords = [f"{val:.1f}" for val in sanitized]
                 if cls_name in valid_set:
                     counts[cls_name] += 1
                 else:
@@ -238,7 +271,18 @@ def normalize_and_validate_labels(
                 updated_lines.append(line)
                 continue
 
-            coords = parts[:8]
+            try:
+                raw_px = [float(x) for x in parts[:8]]
+            except ValueError:
+                updated_lines.append(line)
+                continue
+            sanitized = _sanitize_polygon_coords(raw_px)
+            if sanitized is None:
+                changed = True
+                continue
+            if sanitized != raw_px:
+                changed = True
+            coords = [f"{val:.1f}" for val in sanitized]
             difficult = parts[-1]
             raw_cls = " ".join(parts[8:-1])
             cls_name = (

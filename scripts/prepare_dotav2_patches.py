@@ -121,6 +121,8 @@ def main() -> None:
             )
 
         save_dir = args.out_dir / split
+        if save_dir.exists():
+            shutil.rmtree(save_dir)
         cfg_path = build_split_config(
             img_dirs=[str(split_src / "images")],
             ann_dirs=[str(split_src / "labelTxt")],
