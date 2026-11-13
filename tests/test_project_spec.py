@@ -88,11 +88,23 @@ def test_evaluate_benchmark_report(tmp_path: Path) -> None:
     flag_dir.mkdir()
 
     (base_dir / "scalars.json").write_text(
-        json.dumps({"step": 12, "dota/mAP": 0.4712, "dota/plane_AP": 0.81}) + "\n",
+        json.dumps({"step": 12, "dota/mAP": 0.4712, "dota/AP50": 0.471}) + "\n",
+        encoding="utf-8",
+    )
+    (base_dir / "train.log").write_text(
+        "| plane              | 4859  | 8707  | 0.842  | 0.788 |\n"
+        "| airport            | 102   | 14    | 0.049  | 0.091 |\n"
+        "11/13 12:17:26 - mmengine - INFO - Epoch(val) [12][1781/1781]    dota/mAP: 0.4712  dota/AP50: 0.4710\n",
         encoding="utf-8",
     )
     (flag_dir / "scalars.json").write_text(
-        json.dumps({"step": 24, "dota/mAP": 0.5689, "dota/plane_AP": 0.86}) + "\n",
+        json.dumps({"step": 24, "dota/mAP": 0.5689, "dota/AP50": 0.569}) + "\n",
+        encoding="utf-8",
+    )
+    (flag_dir / "train.log").write_text(
+        "| plane              | 4859  | 8707  | 0.890  | 0.860 |\n"
+        "| airport            | 102   | 140   | 0.400  | 0.350 |\n"
+        "11/13 15:17:26 - mmengine - INFO - Epoch(val) [24][1781/1781]    dota/mAP: 0.5689  dota/AP50: 0.5690\n",
         encoding="utf-8",
     )
 
@@ -102,6 +114,8 @@ def test_evaluate_benchmark_report(tmp_path: Path) -> None:
     assert "0.4712" in md
     assert "0.5689" in md
     assert "+0.0977" in md
+    assert "0.7880" in md
+    assert "0.3500" in md
 
 
 def test_colab_notebook_valid() -> None:
