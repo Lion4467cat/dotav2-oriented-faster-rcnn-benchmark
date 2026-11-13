@@ -117,6 +117,7 @@ dependencies = [
     { name = "pillow", version = "12.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pillow", version = "13.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pyyaml" },
+    { name = "requests" },
     { name = "tqdm" },
 ]
 
@@ -133,6 +134,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26.4" },
     { name = "pillow", specifier = ">=10.4.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "requests", specifier = ">=2.32.0" },
     { name = "tqdm", specifier = ">=4.66.5" },
 ]
 

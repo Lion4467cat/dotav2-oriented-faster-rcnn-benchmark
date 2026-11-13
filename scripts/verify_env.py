@@ -16,8 +16,10 @@ CONFIG_FILES = [
 
 def recommend_batch_profile(gpu_name: str, vram_gb: float) -> dict[str, int | str]:
     """Recommend batch_size and grad accumulation for Colab GPU tier."""
+    if vram_gb >= 75:
+        return {"tier": "A100-80GB", "batch_size": 8, "accumulative_counts": 1}
     if vram_gb >= 38:
-        return {"tier": "A100-40GB+", "batch_size": 4, "accumulative_counts": 2}
+        return {"tier": "A100-40GB", "batch_size": 4, "accumulative_counts": 2}
     if vram_gb >= 20:
         return {"tier": "L4/A10-24GB", "batch_size": 2, "accumulative_counts": 4}
     return {"tier": f"T4/LowVRAM ({gpu_name})", "batch_size": 1, "accumulative_counts": 8}

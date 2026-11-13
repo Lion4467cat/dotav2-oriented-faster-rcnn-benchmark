@@ -20,7 +20,7 @@ def build_notebook(out_path: Path) -> None:
             "- **Track B (Flagship)**: Context-Aware Oriented Faster R-CNN (`ConvNeXt-S + PAFPN + Oriented RPN + KLD Loss + ClassBalancedDataset`, `2x`)\n\n"
             "Before running:\n"
             "1. Go to **Runtime -> Change runtime type** -> select **A100 GPU** (or **L4**) + **High-RAM**.\n"
-            "2. Set your `GITHUB_REPO_URL` and dataset source options in **Step 2**.\n"
+            "2. Review **Step 2** (`DATA_SOURCE = 'ultralytics'` downloads `DOTAv2.zip` automatically and caches it on Drive).\n"
             "3. Click **Runtime -> Run all**.\n"
         ),
         nbf.v4.new_code_cell(
@@ -30,45 +30,46 @@ def build_notebook(out_path: Path) -> None:
             "!nvidia-smi\n"
         ),
         nbf.v4.new_markdown_cell(
-            "**Analysis (Step 1):** Verify above that `nvidia-smi` reports an **A100 (40GB)** or **L4 (24GB)** GPU and that Google Drive is mounted at `/content/drive` for checkpoint persistence."
+            "**Analysis (Step 1):** Verify above that `nvidia-smi` reports an **A100 (40GB/80GB)** or **L4 (24GB)** GPU and that Google Drive is mounted at `/content/drive` for checkpoint persistence."
         ),
         nbf.v4.new_code_cell(
             "# Step 2: Configure Repo, Dataset Source & Run Mode\n"
             "GITHUB_REPO_URL = 'https://github.com/Lion4467cat/dotav2-oriented-faster-rcnn-benchmark.git'\n"
             "WORK_ROOT = '/content/drive/MyDrive/dotav2_benchmark'\n"
-            "REPO_DIR = '/content/ADA'\n\n"
-            "# Dataset source: 'local' (zips already in WORK_ROOT/raw_archives), 'gdrive', or 'kaggle'\n"
-            "DATA_SOURCE = 'local'\n"
+            "REPO_DIR = '/content/ADA'\n"
+            "VENV_PY = '/content/mmrotate_venv/bin/python'\n\n"
+            "# Dataset source: 'ultralytics' (auto-downloads DOTAv2.zip), 'local', 'gdrive', or 'kaggle'\n"
+            "DATA_SOURCE = 'ultralytics'\n"
             "KAGGLE_DATASET_SLUG = ''  # Optional if DATA_SOURCE == 'kaggle'\n"
-            "V2_TRAIN_ANN_ID = ''      # Optional Google Drive file ID for DOTA-v2.0 train labelTxt zip\n"
-            "V2_VAL_ANN_ID = ''        # Optional Google Drive file ID for DOTA-v2.0 val labelTxt zip\n\n"
+            "V2_TRAIN_ANN_ID = ''      # Optional if DATA_SOURCE == 'gdrive'\n"
+            "V2_VAL_ANN_ID = ''        # Optional if DATA_SOURCE == 'gdrive'\n\n"
             "# Set SMOKE_TEST_LIMIT = 50 for a fast pipeline sanity check, or 0 for full DOTA v2.0\n"
             "SMOKE_TEST_LIMIT = 0\n"
             "RUN_BASELINE_TRACK_A = True\n"
             "RUN_FLAGSHIP_TRACK_B = True\n"
         ),
         nbf.v4.new_markdown_cell(
-            "**Analysis (Step 2):** Confirm `DATA_SOURCE` matches where your DOTA v2.0 archives live, and keep `SMOKE_TEST_LIMIT = 50` on your very first run if you want a ~5-minute end-to-end verification before full training."
+            "**Analysis (Step 2):** Confirm `DATA_SOURCE` (`'ultralytics'` caches `DOTAv2.zip` in `WORK_ROOT/raw_archives`), and use `SMOKE_TEST_LIMIT = 50` if running an initial pipeline check before full training."
         ),
         nbf.v4.new_code_cell(
-            "# Step 3: Clone Repo & Install OpenMMLab 2.x + MMRotate (dev-1.x)\n"
+            "# Step 3: Clone/Update Repo & Provision Python 3.11 + MMRotate (dev-1.x) via uv\n"
             "import os, subprocess\n"
             "os.makedirs(f'{WORK_ROOT}/raw_archives', exist_ok=True)\n"
             "os.makedirs(f'{WORK_ROOT}/work_dirs', exist_ok=True)\n\n"
             "if not os.path.exists(REPO_DIR):\n"
-            "    if not GITHUB_REPO_URL:\n"
-            "        raise ValueError('Set GITHUB_REPO_URL in Step 2 (or upload repo to /content/ADA).')\n"
-            "    subprocess.run(['git', 'clone', GITHUB_REPO_URL, REPO_DIR], check=True)\n\n"
+            "    subprocess.run(['git', 'clone', GITHUB_REPO_URL, REPO_DIR], check=True)\n"
+            "else:\n"
+            "    subprocess.run(['git', '-C', REPO_DIR, 'pull', '--ff-only'], check=True)\n\n"
             "%cd /content/ADA\n"
-            "!bash scripts/setup_colab.sh /content/ADA\n"
+            "!bash scripts/setup_colab.sh /content/ADA /content/mmrotate_venv\n"
         ),
         nbf.v4.new_markdown_cell(
-            "**Analysis (Step 3):** `verify_env.py` validates PyTorch 2.x + MMCV 2.x + MMDetection 3.x + MMRotate `dev-1.x` compatibility and confirms both 18-class config files parse cleanly."
+            "**Analysis (Step 3):** `setup_colab.sh` creates an isolated Python 3.11 venv via `uv` and installs prebuilt PyTorch 2.1.2 (`cu121`) + MMCV 2.1.0 + MMDet 3.x + MMRotate `dev-1.x`, avoiding Colab's system Python 3.13 incompatibility."
         ),
         nbf.v4.new_code_cell(
             "# Step 4: Download / Extract DOTA v2.0 & Tile 1024x1024 Patches onto Fast Local NVMe\n"
             "cmd = [\n"
-            "    'python', 'scripts/download_dotav2.py',\n"
+            "    VENV_PY, 'scripts/download_dotav2.py',\n"
             "    '--source', DATA_SOURCE,\n"
             "    '--cache-dir', f'{WORK_ROOT}/raw_archives',\n"
             "    '--out-dir', '/content/data/dotav2_raw',\n"
@@ -81,7 +82,7 @@ def build_notebook(out_path: Path) -> None:
             "    cmd += ['--v2-val-ann', V2_VAL_ANN_ID]\n"
             "subprocess.run(cmd, check=True)\n\n"
             "tile_cmd = [\n"
-            "    'python', 'scripts/prepare_dotav2_patches.py',\n"
+            "    VENV_PY, 'scripts/prepare_dotav2_patches.py',\n"
             "    '--raw-dir', '/content/data/dotav2_raw',\n"
             "    '--out-dir', '/content/data/split_ss_dotav2',\n"
             "    '--mmrotate-dir', '/content/ADA/mmrotate',\n"
@@ -97,7 +98,7 @@ def build_notebook(out_path: Path) -> None:
             "**Analysis (Step 4):** Inspect the staged instance counts and patch counts printed above. `train` and `val` are tiled independently onto `/content/data/split_ss_dotav2/` to prevent leakage and avoid slow Google Drive FUSE I/O."
         ),
         nbf.v4.new_code_cell(
-            "# Step 5: Auto-Tune Batch Size for Detected Colab GPU (A100 vs L4 vs T4)\n"
+            "# Step 5: Auto-Tune Batch Size for Detected Colab GPU (A100-80GB / A100-40GB / L4 / T4)\n"
             "import json\n"
             "env_info = json.loads(open('/content/ADA/colab_env_summary.json').read())\n"
             "prof = env_info['recommended_profile']\n"
@@ -106,13 +107,13 @@ def build_notebook(out_path: Path) -> None:
             "print(f\"Detected {env_info['gpu_name']} ({env_info['vram_gb']} GB) -> batch_size={BS}, accum={ACC}\")\n"
         ),
         nbf.v4.new_markdown_cell(
-            "**Analysis (Step 5):** Effective batch size (`BS * ACC = 8`) stays invariant across A100, L4, and T4 runtimes so learning rate schedules remain calibrated."
+            "**Analysis (Step 5):** Effective batch size (`BS * ACC = 8`) stays invariant across A100-80GB, A100-40GB, L4, and T4 runtimes so learning rate schedules remain calibrated."
         ),
         nbf.v4.new_code_cell(
             "# Step 6: Train Track A — Vanilla Rotated Faster R-CNN (R50-FPN, 1x Baseline)\n"
             "if RUN_BASELINE_TRACK_A:\n"
             "    track_a_dir = f'{WORK_ROOT}/work_dirs/track_a_baseline_r50_fpn_1x'\n"
-            "    !python mmrotate/tools/train.py \\\n"
+            "    !{VENV_PY} mmrotate/tools/train.py \\\n"
             "        configs/baseline_rotated_faster_rcnn_r50_fpn_1x_dotav2.py \\\n"
             "        --work-dir {track_a_dir} \\\n"
             "        --resume \\\n"
@@ -125,7 +126,7 @@ def build_notebook(out_path: Path) -> None:
             "# Step 7: Train Track B — Context-Aware Oriented Faster R-CNN (ConvNeXt-S + PAFPN + KLD, 2x)\n"
             "if RUN_FLAGSHIP_TRACK_B:\n"
             "    track_b_dir = f'{WORK_ROOT}/work_dirs/track_b_convnext_s_pafpn_kld_2x'\n"
-            "    !python mmrotate/tools/train.py \\\n"
+            "    !{VENV_PY} mmrotate/tools/train.py \\\n"
             "        configs/benchmark_oriented_faster_rcnn_convnext_s_pafpn_kld_2x_dotav2.py \\\n"
             "        --work-dir {track_b_dir} \\\n"
             "        --resume \\\n"
@@ -136,7 +137,7 @@ def build_notebook(out_path: Path) -> None:
         ),
         nbf.v4.new_code_cell(
             "# Step 8: Generate Final Benchmark Report (Saved to Google Drive)\n"
-            "report_cmd = ['python', 'scripts/evaluate_benchmark.py', '--out', f'{WORK_ROOT}/benchmark_report.md']\n"
+            "report_cmd = [VENV_PY, 'scripts/evaluate_benchmark.py', '--out', f'{WORK_ROOT}/benchmark_report.md']\n"
             "if RUN_BASELINE_TRACK_A:\n"
             "    report_cmd += ['--baseline-dir', f'{WORK_ROOT}/work_dirs/track_a_baseline_r50_fpn_1x']\n"
             "if RUN_FLAGSHIP_TRACK_B:\n"

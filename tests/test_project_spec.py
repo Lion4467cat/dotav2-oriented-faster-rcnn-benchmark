@@ -53,7 +53,28 @@ def test_normalize_and_validate_labels(tmp_path: Path) -> None:
     assert "small-vehicle 0" in lbl_file.read_text(encoding="utf-8")
 
 
+def test_convert_yolo_obb_to_dota_labeltxt(tmp_path: Path) -> None:
+    from PIL import Image
+
+    img_dir = tmp_path / "images"
+    lbl_dir = tmp_path / "labels"
+    img_dir.mkdir()
+    lbl_dir.mkdir()
+    Image.new("RGB", (1000, 500)).save(img_dir / "P0002.png")
+    (lbl_dir / "P0002.txt").write_text(
+        "10 0.1 0.2 0.2 0.2 0.2 0.4 0.1 0.4\n"
+        "17 0.5 0.5 0.6 0.5 0.6 0.6 0.5 0.6\n",
+        encoding="utf-8",
+    )
+    counts = normalize_and_validate_labels(lbl_dir, img_dir=img_dir)
+    assert counts["small-vehicle"] == 1
+    assert counts["helipad"] == 1
+    text = (lbl_dir / "P0002.txt").read_text(encoding="utf-8")
+    assert "100.0 100.0 200.0 100.0 200.0 200.0 100.0 200.0 small-vehicle 0" in text
+
+
 def test_gpu_batch_profiles() -> None:
+    assert recommend_batch_profile("NVIDIA A100-SXM4-80GB", 80.0)["batch_size"] == 8
     assert recommend_batch_profile("NVIDIA A100-SXM4-40GB", 40.0)["batch_size"] == 4
     assert recommend_batch_profile("NVIDIA L4", 22.5)["batch_size"] == 2
     assert recommend_batch_profile("Tesla T4", 15.0)["batch_size"] == 1
