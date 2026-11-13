@@ -149,8 +149,28 @@ def extract_archives(src_dir: Path, target_dir: Path) -> None:
                 tf.extractall(target_dir)
 
 
-def _locate_split_dirs(root: Path, split: str) -> tuple[Path, Path]:
-    """Find (images_dir, label_dir) for a split under extracted directories."""
+def _locate_split_dirs(root: Path, split: str) -> tuple[list[Path], Path]:
+    """Find (image_dirs, label_dir) for a split under extracted directories."""
+    # Prefer full DOTA-v2.0 annotations if present (e.g., isaaccorley/dota).
+    v2_ann_candidates = [
+        root / split / "annotations" / "version2.0",
+        root / split / "labelTxt-v2.0",
+        root / split / "labelTxt",
+    ]
+    v2_lbl_dir = next((p for p in v2_ann_candidates if p.is_dir()), None)
+
+    img_dirs: list[Path] = []
+    for candidate in (
+        root / "images" / split,
+        root / "DOTAv2" / "images" / split,
+        root / split / "images",
+    ):
+        if candidate.is_dir():
+            img_dirs.append(candidate)
+
+    if img_dirs and v2_lbl_dir is not None:
+        return img_dirs, v2_lbl_dir
+
     candidates = [
         # Canonical DOTA layout
         (root / split / "images", root / split / "labelTxt"),
@@ -163,28 +183,28 @@ def _locate_split_dirs(root: Path, split: str) -> tuple[Path, Path]:
     ]
     for img_dir, lbl_dir in candidates:
         if img_dir.is_dir() and lbl_dir.is_dir():
-            return img_dir, lbl_dir
+            return [img_dir], lbl_dir
 
     # Fallback recursive search.
-    img_dirs = [p for p in root.rglob(split) if p.is_dir() and p.parent.name == "images"]
+    rec_img_dirs = [p for p in root.rglob(split) if p.is_dir() and p.parent.name == "images"]
     lbl_dirs = [
         p
         for p in root.rglob(split)
         if p.is_dir() and p.parent.name in ("labels", "labelTxt")
     ]
-    if img_dirs and lbl_dirs:
-        return img_dirs[0], lbl_dirs[0]
+    if rec_img_dirs and lbl_dirs:
+        return rec_img_dirs, lbl_dirs[0]
 
     split_root = root / split
     if split_root.is_dir():
-        img_dirs = [p for p in split_root.rglob("images") if p.is_dir()]
+        rec_img_dirs = [p for p in split_root.rglob("images") if p.is_dir()]
         lbl_dirs = [
             p for p in split_root.rglob("*") if p.is_dir() and "label" in p.name.lower()
         ]
-        if not img_dirs and any(
+        if not rec_img_dirs and any(
             p.suffix.lower() in {".png", ".jpg", ".jpeg"} for p in split_root.rglob("*")
         ):
-            img_dirs = [
+            rec_img_dirs = [
                 p
                 for p in [split_root, *split_root.rglob("*")]
                 if p.is_dir()
@@ -200,8 +220,8 @@ def _locate_split_dirs(root: Path, split: str) -> tuple[Path, Path]:
                 for p in [split_root, *split_root.rglob("*")]
                 if p.is_dir() and any(f.suffix == ".txt" for f in p.iterdir() if f.is_file())
             ]
-        if img_dirs and lbl_dirs:
-            return img_dirs[0], lbl_dirs[0]
+        if rec_img_dirs and lbl_dirs:
+            return rec_img_dirs, lbl_dirs[0]
 
     raise FileNotFoundError(
         f"Could not find images/ and labels for split '{split}' under {root}."
@@ -353,16 +373,20 @@ def normalize_and_validate_labels(
 def stage_split(
     extracted_root: Path, out_root: Path, split: str, normalize_spaces: bool
 ) -> None:
-    """Copy split into canonical out_root/{split}/{images,labelTxt} layout."""
-    img_src, lbl_src = _locate_split_dirs(extracted_root, split)
+    """Copy/merge split into canonical out_root/{split}/{images,labelTxt} layout."""
+    img_srcs, lbl_src = _locate_split_dirs(extracted_root, split)
     img_dst = out_root / split / "images"
     lbl_dst = out_root / split / "labelTxt"
     img_dst.parent.mkdir(parents=True, exist_ok=True)
 
-    if img_src.resolve() != img_dst.resolve():
+    if len(img_srcs) == 1 and img_srcs[0].resolve() == img_dst.resolve():
+        pass
+    else:
         if img_dst.exists():
             shutil.rmtree(img_dst)
-        shutil.copytree(img_src, img_dst)
+        img_dst.mkdir(parents=True, exist_ok=True)
+        for src_dir in img_srcs:
+            shutil.copytree(src_dir, img_dst, dirs_exist_ok=True)
 
     if lbl_src.resolve() != lbl_dst.resolve():
         if lbl_dst.exists():
@@ -414,6 +438,7 @@ def main() -> None:
     out_dir: Path = args.out_dir
 
     if args.source == "huggingface":
+        download_url(ULTRALYTICS_DOTAV2_URL, cache_dir / "DOTAv2.zip")
         download_url(
             HUGGINGFACE_DOTAV2_URLS["train_images"],
             cache_dir / "train" / "dotav2.0_images_train.tar.gz",
