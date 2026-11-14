@@ -166,6 +166,7 @@ def main() -> None:
     env = dict(os.environ)
     env["MPLBACKEND"] = "Agg"
     env["PYTHONPATH"] = f"{repo_dir}:{repo_dir / 'mmrotate'}:{env.get('PYTHONPATH', '')}"
+    env["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
     train_cmd = [
         str(torchrun_bin),
@@ -176,11 +177,11 @@ def main() -> None:
         "--resume",
         "--launcher", "pytorch",
         "--cfg-options",
-        "train_dataloader.batch_size=2",
+        "train_dataloader.batch_size=1",
         "train_dataloader.num_workers=2",
-        "val_dataloader.batch_size=2",
+        "val_dataloader.batch_size=1",
         "val_dataloader.num_workers=2",
-        "optim_wrapper.accumulative_counts=2",
+        "optim_wrapper.accumulative_counts=4",
         "train_cfg.val_interval=4",
         f"data_root={split_dir}/",
         f"raw_train_dataset.data_root={split_dir}/",
@@ -204,7 +205,7 @@ def main() -> None:
         "--config", str(config_file),
         "--work-dir", str(work_dir),
         "--ann-dir", str(split_dir / "val" / "annfiles"),
-        "--batch-size", "2",
+        "--batch-size", "1",
     ]
     run_cmd(eval_cmd, cwd=repo_dir, env=env)
 
