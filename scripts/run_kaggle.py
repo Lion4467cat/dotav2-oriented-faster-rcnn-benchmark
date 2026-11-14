@@ -41,6 +41,43 @@ def run_cmd(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None 
     return p.returncode
 
 
+def patch_gaussian_dist_loss(repo_dir: Path, venv_dir: Path) -> None:
+    """Patch mmrotate's gaussian_dist_loss.py to use analytical 2x2 determinant.
+
+    Avoids cuSOLVER CUSOLVER_STATUS_INTERNAL_ERROR and cuBLAS Lu_factor errors.
+    """
+    candidates = [
+        repo_dir / "mmrotate" / "mmrotate" / "models" / "losses" / "gaussian_dist_loss.py",
+    ]
+    if (venv_dir / "lib").is_dir():
+        for p in (venv_dir / "lib").glob("python*/site-packages/mmrotate/models/losses/gaussian_dist_loss.py"):
+            candidates.append(p)
+
+    helper = (
+        "\ndef _det_2x2(m: torch.Tensor) -> torch.Tensor:\n"
+        "    return (m[..., 0, 0] * m[..., 1, 1] - m[..., 0, 1] * m[..., 1, 0]).clamp(min=1e-7)\n\n"
+    )
+
+    for target_file in candidates:
+        if not target_file.is_file():
+            continue
+        text = target_file.read_text(encoding="utf-8")
+        if "def _det_2x2" in text:
+            log(f"gaussian_dist_loss.py already patched: {target_file}")
+            continue
+
+        if "def gwd_loss" in text:
+            text = text.replace("def gwd_loss", helper + "def gwd_loss", 1)
+        elif "def kld_loss" in text:
+            text = text.replace("def kld_loss", helper + "def kld_loss", 1)
+
+        text = text.replace("Sigma_p.det()", "_det_2x2(Sigma_p)")
+        text = text.replace("Sigma_t.det()", "_det_2x2(Sigma_t)")
+
+        target_file.write_text(text, encoding="utf-8")
+        log(f"Successfully patched {target_file} with analytical 2x2 determinant!")
+
+
 def main() -> None:
     log("=== Starting Kaggle DOTA v2.0 Track B Pipeline ===")
 
@@ -90,6 +127,9 @@ def main() -> None:
     else:
         log("Step 2/6: Python 3.11 venv already provisioned. Ensuring mmpretrain is installed...")
         run_cmd([str(venv_py), "-m", "pip", "install", "-q", "mmpretrain>=1.0.0rc8"])
+
+    # Patch GaussianDistLoss with analytical 2x2 determinant to avoid cuSOLVER error
+    patch_gaussian_dist_loss(repo_dir, venv_dir)
 
     # 3. Checkpoint Staging (epoch_16.pth from Google Drive)
     log("Step 3/6: Staging Track B Epoch 16 checkpoint...")
