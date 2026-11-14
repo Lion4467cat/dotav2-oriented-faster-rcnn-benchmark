@@ -68,12 +68,19 @@ def main() -> None:
         except Exception as e:
             log(f"Notice: /kaggle/working/data symlink: {e}")
 
-    if not os.path.exists("/content"):
-        try:
-            os.symlink("/kaggle/working", "/content")
-            log("Created symlink /content -> /kaggle/working")
-        except Exception as e:
-            log(f"Notice: /content symlink: {e}")
+    # Ensure /content/data links directly to /tmp/data
+    content_dir = Path("/content")
+    content_dir.mkdir(parents=True, exist_ok=True)
+    content_data = Path("/content/data")
+    if content_data.is_symlink() or content_data.is_file():
+        content_data.unlink()
+    elif content_data.is_dir():
+        shutil.rmtree(str(content_data), ignore_errors=True)
+    try:
+        content_data.symlink_to(tmp_data_dir)
+        log("Created symlink /content/data -> /tmp/data")
+    except Exception as e:
+        log(f"Notice: /content/data symlink: {e}")
 
     # 2. Environment Provisioning
     if not venv_py.is_file():
@@ -177,7 +184,9 @@ def main() -> None:
         "train_cfg.val_interval=4",
         f"data_root={split_dir}/",
         f"raw_train_dataset.data_root={split_dir}/",
+        f"train_dataloader.dataset.dataset.data_root={split_dir}/",
         f"val_dataloader.dataset.data_root={split_dir}/",
+        f"test_dataloader.dataset.data_root={split_dir}/",
         "resume=True",
         f"load_from={ckpt_path}",
     ]
