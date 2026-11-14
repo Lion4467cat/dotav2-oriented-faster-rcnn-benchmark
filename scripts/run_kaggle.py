@@ -53,8 +53,21 @@ def main() -> None:
     venv_py = venv_dir / "bin" / "python"
     torchrun_bin = venv_dir / "bin" / "torchrun"
 
-    # Compatibility symlinks for /content paths in configs
-    os.makedirs("/kaggle/working/data", exist_ok=True)
+    # Use /tmp/data (962 GB free) instead of /kaggle/working (20 GB limit)
+    old_data_dir = Path("/kaggle/working/data")
+    if old_data_dir.exists() and not old_data_dir.is_symlink():
+        log("Removing leftover /kaggle/working/data to reclaim working disk...")
+        shutil.rmtree(str(old_data_dir), ignore_errors=True)
+
+    tmp_data_dir = Path("/tmp/data")
+    tmp_data_dir.mkdir(parents=True, exist_ok=True)
+    if not old_data_dir.exists():
+        try:
+            old_data_dir.symlink_to(tmp_data_dir)
+            log("Created symlink /kaggle/working/data -> /tmp/data")
+        except Exception as e:
+            log(f"Notice: /kaggle/working/data symlink: {e}")
+
     if not os.path.exists("/content"):
         try:
             os.symlink("/kaggle/working", "/content")
@@ -90,9 +103,9 @@ def main() -> None:
     last_ckpt_file = work_dir / "last_checkpoint"
     last_ckpt_file.write_text(str(ckpt_path), encoding="utf-8")
 
-    # 4. Dataset Acquisition & Patch Tiling
-    log("Step 4/6: Checking DOTA v2.0 patched dataset...")
-    split_dir = Path("/kaggle/working/data/split_ss_dotav2")
+    # 4. Dataset Acquisition & Patch Tiling (in /tmp/data where 960+ GB is available)
+    log("Step 4/6: Checking DOTA v2.0 patched dataset in /tmp/data...")
+    split_dir = Path("/tmp/data/split_ss_dotav2")
     train_patch_imgs = split_dir / "train" / "images"
     val_patch_imgs = split_dir / "val" / "images"
 
@@ -104,8 +117,8 @@ def main() -> None:
     )
 
     if need_tiling:
-        raw_dir = Path("/kaggle/working/data/dotav2_raw")
-        cache_dir = Path("/kaggle/working/data/raw_archives")
+        raw_dir = Path("/tmp/data/dotav2_raw")
+        cache_dir = Path("/tmp/data/raw_archives")
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         log("Downloading DOTA v2.0 via Ultralytics release...")
@@ -116,6 +129,12 @@ def main() -> None:
             "--cache-dir", str(cache_dir),
             "--out-dir", str(raw_dir),
         ])
+
+        # Remove raw zip archive immediately after extraction to free 2 GB
+        raw_zip = cache_dir / "DOTAv2.zip"
+        if raw_zip.exists():
+            raw_zip.unlink()
+            log("Removed raw DOTAv2.zip to conserve disk space.")
 
         log("Tiling 1024x1024 patches with 200px overlap...")
         run_cmd([
@@ -128,12 +147,6 @@ def main() -> None:
             "--overlap", "200",
             "--nproc", "4",
         ])
-
-        # Remove raw zip archive to conserve Kaggle scratch disk
-        raw_zip = cache_dir / "DOTAv2.zip"
-        if raw_zip.exists():
-            raw_zip.unlink()
-            log("Removed raw DOTAv2.zip to conserve disk space.")
     else:
         n_train = len(list(train_patch_imgs.glob("*.png")))
         n_val = len(list(val_patch_imgs.glob("*.png")))
