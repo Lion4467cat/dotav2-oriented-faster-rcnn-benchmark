@@ -46,36 +46,42 @@ def patch_gaussian_dist_loss(repo_dir: Path, venv_dir: Path) -> None:
 
     Avoids cuSOLVER CUSOLVER_STATUS_INTERNAL_ERROR and cuBLAS Lu_factor errors.
     """
-    candidates = [
-        repo_dir / "mmrotate" / "mmrotate" / "models" / "losses" / "gaussian_dist_loss.py",
-    ]
-    if (venv_dir / "lib").is_dir():
-        for p in (venv_dir / "lib").glob("python*/site-packages/mmrotate/models/losses/gaussian_dist_loss.py"):
-            candidates.append(p)
+    mmrotate_git = repo_dir / "mmrotate"
+    if (mmrotate_git / ".git").is_dir():
+        subprocess.run(
+            ["git", "-C", str(mmrotate_git), "checkout", "--", "mmrotate/models/losses/gaussian_dist_loss.py"],
+            capture_output=True,
+        )
+
+    target_file = repo_dir / "mmrotate" / "mmrotate" / "models" / "losses" / "gaussian_dist_loss.py"
+    if not target_file.is_file():
+        log(f"Notice: {target_file} not found for patching.")
+        return
+
+    text = target_file.read_text(encoding="utf-8")
+    if "def _det_2x2" in text:
+        log(f"gaussian_dist_loss.py already patched: {target_file}")
+        return
 
     helper = (
         "\ndef _det_2x2(m: torch.Tensor) -> torch.Tensor:\n"
         "    return (m[..., 0, 0] * m[..., 1, 1] - m[..., 0, 1] * m[..., 1, 0]).clamp(min=1e-7)\n\n"
     )
 
-    for target_file in candidates:
-        if not target_file.is_file():
-            continue
-        text = target_file.read_text(encoding="utf-8")
-        if "def _det_2x2" in text:
-            log(f"gaussian_dist_loss.py already patched: {target_file}")
-            continue
+    # Insert helper right after import torch (at top level, never under a decorator)
+    if "import torch\n" in text:
+        text = text.replace("import torch\n", "import torch\n" + helper, 1)
+    elif "import torch" in text:
+        text = text.replace("import torch", "import torch\n" + helper, 1)
+    else:
+        text = helper + text
 
-        if "def gwd_loss" in text:
-            text = text.replace("def gwd_loss", helper + "def gwd_loss", 1)
-        elif "def kld_loss" in text:
-            text = text.replace("def kld_loss", helper + "def kld_loss", 1)
+    # Replace .det() calls on 2x2 covariance matrices
+    text = text.replace("Sigma_p.det()", "_det_2x2(Sigma_p)")
+    text = text.replace("Sigma_t.det()", "_det_2x2(Sigma_t)")
 
-        text = text.replace("Sigma_p.det()", "_det_2x2(Sigma_p)")
-        text = text.replace("Sigma_t.det()", "_det_2x2(Sigma_t)")
-
-        target_file.write_text(text, encoding="utf-8")
-        log(f"Successfully patched {target_file} with analytical 2x2 determinant!")
+    target_file.write_text(text, encoding="utf-8")
+    log(f"Successfully patched {target_file} with analytical 2x2 determinant (top-level)!")
 
 
 def main() -> None:
