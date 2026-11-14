@@ -68,7 +68,8 @@ def main() -> None:
         setup_script = repo_dir / "scripts" / "setup_colab.sh"
         run_cmd(["bash", str(setup_script), str(repo_dir), str(venv_dir)])
     else:
-        log("Step 2/6: Python 3.11 venv already provisioned.")
+        log("Step 2/6: Python 3.11 venv already provisioned. Ensuring mmpretrain is installed...")
+        run_cmd([str(venv_py), "-m", "pip", "install", "-q", "mmpretrain>=1.0.0rc8"])
 
     # 3. Checkpoint Staging (epoch_16.pth from Google Drive)
     log("Step 3/6: Staging Track B Epoch 16 checkpoint...")

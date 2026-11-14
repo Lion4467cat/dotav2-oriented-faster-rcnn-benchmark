@@ -38,6 +38,7 @@ echo "[setup] Installing NumPy < 2.0, OpenMMLab 2.x, and helper dependencies..."
 "$UV_BIN" pip install --python "$VENV_PY" -q -c /tmp/mm_constraints.txt \
   "numpy<2.0" "setuptools<70" \
   "mmengine>=0.8.0,<0.10.0" \
+  "mmpretrain>=1.0.0rc8" \
   "gdown>=5.2.0" "kaggle" "shapely" "terminaltables" "einops" "pillow" "tqdm" "requests"
 
 "$UV_BIN" pip install --python "$VENV_PY" -q -c /tmp/mm_constraints.txt \
